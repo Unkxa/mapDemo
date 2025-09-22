@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地图演示 - Leaflet高德地图</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
+        integrity="sha512-3hV5M0iWQ5ZwDjWZuC5eI47DvKtI9mWHs0pQo0b6W3nW89V1vU8hJ1583nQ7g+bN9mz/b+9gEzLmoy88qQO/bOYyTQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"
+        integrity="sha512-ozq8xQKq6urvuU6jNgkfqAmT7jKN2XumbrX1JiB3TnF7tI48DPI4Gy1GXKD/V3EExgAs1V+pRO7vwtS1LHg0Gw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/DrawSVGPlugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/MorphSVGPlugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/MotionPathPlugin.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/MotionPathHelper.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .leaflet-draw-tooltip {
+            margin-top: -80px !important;
+            margin-left: 40px !important;
+            width: 90px !important;
+            border-radius: 10px !important;
+            padding: 10px !important;
+            background-color: #fff !important;
+        }
+
+        .leaflet-draw {
+            width: 200px !important;
+        }
+
+        .leaflet-touch .leaflet-bar a {
+            width: 200px !important;
+        }
+
+        button {
+            margin-right: 10px;
+            padding: 10px;
+        }
+
+        .app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .header p {
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .control-group input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s;
+            margin-right: 0.5rem;
+        }
+
+        .btn:hover {
+            background: #5a6fd8;
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem;
+            border-radius: 10px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+
+        .custom-popup {
+            font-family: Arial, sans-serif;
+        }
+
+        .custom-popup h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .custom-popup p {
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <div class="header">
+            缩放等级：<span id="zoomValue">16</span>
+            纬度: <span id="latValue">39.9163</span>
+            经度: <span id="lngValue">116.4019</span>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            <button class="btn" id="stopAnimations">停止动画</button>
+            <button class="btn" id="toggleAnimations">暂停/恢复</button>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <script>
+        //国际化
+        L.drawLocal = {
+            draw: {
+                toolbar: {
+                    actions: {
+                        title: "取消绘制",
+                        text: "取消"
+                    },
+                    finish: {
+                        title: "完成绘制",
+                        text: "完成"
+                    },
+                    undo: {
+                        title: "删除最后一个绘制点",
+                        text: "删除上一点"
+                    },
+                    buttons: {
+                        polyline: "绘制折线",
+                        polygon: "绘制多边形",
+                        rectangle: "绘制矩形",
+                        circle: "绘制圆形",
+                        marker: "绘制标记点",
+                        circlemarker: "绘制圆形标记"
+                    }
+                },
+                handlers: {
+                    circle: {
+                        tooltip: {
+                            start: "点击并拖动以绘制圆形。"
+                        },
+                        radius: "半径"
+                    },
+                    circlemarker: {
+                        tooltip: {
+                            start: "点击地图放置圆形标记。"
+                        }
+                    },
+                    marker: {
+                        tooltip: {
+                            start: "点击地图放置标记点。"
+                        }
+                    },
+                    polygon: {
+                        tooltip: {
+                            start: "点击开始绘制形状。",
+                            cont: "点击继续绘制形状。",
+                            end: "点击第一个点以闭合此形状。"
+                        }
+                    },
+                    polyline: {
+                        error: "<strong>错误：</strong>形状边缘不能交叉！",
+                        tooltip: {
+                            start: "点击开始绘制线条。",
+                            cont: "点击继续绘制线条。",
+                            end: "点击最后一个点以完成线条。"
+                        }
+                    },
+                    rectangle: {
+                        tooltip: {
+                            start: "点击并拖动以绘制矩形。"
+                        }
+                    },
+                    simpleshape: {
+                        tooltip: {
+                            end: "松开鼠标以完成绘制。"
+                        }
+                    }
+                }
+            },
+            edit: {
+                toolbar: {
+                    actions: {
+                        save: {
+                            title: "保存更改",
+                            text: "保存"
+                        },
+                        cancel: {
+                            title: "取消编辑，丢弃所有更改",
+                            text: "取消"
+                        },
+                        clearAll: {
+                            title: "清除所有图层",
+                            text: "清除全部"
+                        }
+                    },
+                    buttons: {
+                        edit: "编辑图层",
+                        editDisabled: "没有可编辑的图层",
+                        remove: "删除图层",
+                        removeDisabled: "没有可删除的图层"
+                    }
+                },
+                handlers: {
+                    edit: {
+                        tooltip: {
+                            text: "拖动手柄或标记点来编辑要素。",
+                            subtext: "点击取消以撤消更改。"
+                        }
+                    },
+                    remove: {
+                        tooltip: {
+                            text: "点击要素即可删除。"
+                        }
+                    }
+                }
+            }
+        };
+        gsap.registerPlugin(MotionPathPlugin);
+        let allAnimation = [];
+        let animationObjects = [];
+        // 地图实例
+        let map;
+        let gaodeLayer;
+        let customLayer;
+        let isCustomLayerVisible = false;
+        let demoData = null;
+        let drawnItems;
+        const BEIJING_CENTER = [39.9163, 116.4019];
+        const BEIJING_ZOOM = 16;
+
+        // 加载JSON数据
+        async function loadDemoData() {
+            try {
+                const response = await fetch('/data/demo.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                demoData = await response.json();
+                console.log('Demo数据加载成功:', demoData);
+                return demoData;
+            } catch (error) {
+                console.error('加载Demo数据失败:', error);
+                return null;
+            }
+        }
+
+        function iconMouseDown() {
+            console.log('iconMouseDown');
+        }
+
+        // 初始化地图
+        async function initMap() {
+            // 创建地图实例
+            map = L.map('map').setView(BEIJING_CENTER, BEIJING_ZOOM);
+            // 创建高德地图瓦片层
+            gaodeLayer = L.tileLayer(
+                'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+                {
+                    subdomains: '1234',
+                    attribution: '高德地图',
+                    maxZoom: 18,
+                    minZoom: 8
+                }
+            );
+            // 添加高德地图层到地图
+            gaodeLayer.addTo(map);
+            // 创建可拖拽的marker
+            icon = L.marker([39.9197, 116.3972], {
+                icon: L.icon({
+                    iconUrl: '/icon/biaoji.svg',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                }),
+                draggable: true // 关键：设置为可拖拽
+            }).addTo(map);
+            // 拖拽开始时禁用地图拖拽
+            icon.on('dragstart', () => {
+                disableMapDrag();
+                console.log('icon dragstart', icon);
+            });
+            // 拖拽结束时恢复地图拖拽
+            icon.on('dragend', (e) => {
+                enableMapDrag();
+                const pos = e.target.getLatLng();
+                console.log('icon dragend, 新坐标:', pos);
+            });
+
+            // 创建一个图层组，用来存放绘制的图形
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+
+            // 添加绘制控件
+            var drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems, // 可编辑的图层
+                    remove: true
+                },
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        showArea: true,
+                        drawError: {
+                            color: '#e1e100',
+                            message: '<strong>错误：</strong>形状边缘不能交叉！'
+                        },
+                        shapeOptions: {
+                            color: '#bada55'
+                        }
+                    },
+                    polyline: {
+                        allowIntersection: false,
+                        drawError: {
+                            color: '#e1e100',
+                            message: '<strong>错误：</strong>形状边缘不能交叉！'
+                        },
+                        shapeOptions: {
+                            color: '#bada55'
+                        }
+                    },
+                    rectangle: {
+                        shapeOptions: {
+                            color: '#bada55'
+                        }
+                    },
+                    circle: {
+                        shapeOptions: {
+                            color: '#bada55'
+                        }
+                    },
+                    marker: true,
+                    circlemarker: false
+                }
+            });
+            map.addControl(drawControl);
+
+            // 绑定事件监听器
+            setupEventListeners();
+
+            // 设置绘制事件监听器
+            setupDrawEvents();
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 地图移动事件
+            map.on('moveend', updateInfo);
+            map.on('zoomend', updateInfo);
+            
+            // 动画控制按钮
+            document.getElementById('stopAnimations').addEventListener('click', () => {
+                stopAllAnimations();
+            });
+            
+            document.getElementById('toggleAnimations').addEventListener('click', () => {
+                toggleAnimations();
+            });
+        }
+
+        // 监听绘制事件
+        function setupDrawEvents() {
+            // 监听绘制完成事件
+            map.on(L.Draw.Event.CREATED, function (event) {
+                var layer = event.layer;
+                drawnItems.addLayer(layer);
+                
+                // 绘制动画
+                if (event.layerType == "polyline") {
+                    setTimeout(() => {
+                        createDashedLineAnimation(layer);
+                    }, 100);
+                }
+            })
+            // 监听编辑事件
+            map.on(L.Draw.Event.EDITED, function (event) {
+                var layers = event.layers;
+                layers.eachLayer(function (layer) {
+                    console.log("修改后的图形:", layer.toGeoJSON());
+                });
+            });
+
+            // 监听删除事件
+            map.on(L.Draw.Event.DELETED, function (event) {
+                console.log("删除了图形");
+            });
+        }
+
+        //临时禁用地图缩放拖拽
+        function disableMapDrag() {
+            map.dragging.disable();
+            map.touchZoom.disable();
+            map.doubleClickZoom.disable();
+            map.scrollWheelZoom.disable();
+            map.keyboard.disable();
+        }
+        //临时启用地图缩放拖拽
+        function enableMapDrag() {
+            map.dragging.enable();
+            map.touchZoom.enable();
+            map.doubleClickZoom.enable();
+            map.scrollWheelZoom.enable();
+            map.keyboard.enable();
+        }
+        // 更新信息显示
+        function updateInfo() {
+            const center = map.getCenter();
+            const zoom = map.getZoom();
+            document.getElementById('zoomValue').textContent = zoom;
+            document.getElementById('latValue').textContent = center.lat.toFixed(4);
+            document.getElementById('lngValue').textContent = center.lng.toFixed(4);
+        }
+
+        // 创建虚线移动动画
+        function createDashedLineAnimation(layer) {
+            const path = layer._path;
+            if (!path) return;
+            
+            // 随机选择颜色
+            const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4", "#feca57", "#ff9ff3"];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            // 设置虚线样式
+            path.style.strokeDasharray = "20,10"; // 虚线长度和间隔
+            path.style.strokeDashoffset = "0";
+            path.style.strokeWidth = "5"; // 线条宽度
+            path.style.stroke = randomColor; // 随机颜色
+            path.style.fill = "none";
+            path.style.opacity = "0.8";
+            
+            // 创建移动的虚线效果
+            const animation = gsap.to(path, {
+                strokeDashoffset: -30, // 移动距离（虚线长度+间隔）
+                duration: 2.5, // 动画持续时间
+                ease: "none",
+                repeat: -1, // 无限循环
+                yoyo: false
+            });
+            
+            // 添加闪烁效果
+            const blinkAnimation = gsap.to(path, {
+                opacity: 0.3,
+                duration: 0.5,
+                ease: "power2.inOut",
+                repeat: -1,
+                yoyo: true
+            });
+            
+            // 保存动画对象以便后续控制
+            animationObjects.push({
+                layer: layer,
+                animation: animation,
+                blinkAnimation: blinkAnimation,
+                path: path
+            });
+            
+            console.log("虚线移动动画已创建，颜色:", randomColor, "动画数量:", animationObjects.length);
+        }
+        
+        // 停止所有动画
+        function stopAllAnimations() {
+            animationObjects.forEach(obj => {
+                obj.animation.kill();
+                if (obj.blinkAnimation) {
+                    obj.blinkAnimation.kill();
+                }
+            });
+            animationObjects = [];
+            console.log("所有动画已停止");
+        }
+        
+        // 暂停/恢复动画
+        function toggleAnimations() {
+            animationObjects.forEach(obj => {
+                if (obj.animation.isActive()) {
+                    obj.animation.pause();
+                    if (obj.blinkAnimation) {
+                        obj.blinkAnimation.pause();
+                    }
+                } else {
+                    obj.animation.resume();
+                    if (obj.blinkAnimation) {
+                        obj.blinkAnimation.resume();
+                    }
+                }
+            });
+        }
+        // 页面加载完成后初始化地图
+        document.addEventListener('DOMContentLoaded', async function () {
+            await initMap();
+        });
+    </script>
+</body>
+
+</html>
