@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地图演示 - Deno瓦片地图</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        
+        .header p {
+            color: #666;
+            margin-top: 0.5rem;
+        }
+        
+        .map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+        
+        .map {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: grab;
+            user-select: none;
+        }
+        
+        .map:active {
+            cursor: grabbing;
+        }
+        
+        .tile {
+            position: absolute;
+            image-rendering: pixelated;
+            pointer-events: none;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            min-width: 250px;
+        }
+        
+        .control-group {
+            margin-bottom: 1rem;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .control-group input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+        
+        .control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        
+        .btn:hover {
+            background: #5a6fd8;
+        }
+        
+        .btn:active {
+            transform: translateY(1px);
+        }
+        
+        .btn-download {
+            background: #28a745;
+        }
+        
+        .btn-download:hover {
+            background: #218838;
+        }
+        
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem;
+            border-radius: 10px;
+            font-family: monospace;
+            z-index: 100;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2rem;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 200;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .download-section {
+            border-top: 1px solid #ddd;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .download-section h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="app">
+            <div class="header">
+                <h1>🗺️ 地图演示</h1>
+                <p>基于Deno的瓦片地图系统 - 支持缩放、拖拽和实时瓦片生成</p>
+            </div>
+            
+            <div class="map-container">
+                <div class="map" 
+                     @mousedown="startDrag" 
+                     @mousemove="drag" 
+                     @mouseup="endDrag" 
+                     @wheel="handleWheel"
+                     ref="mapElement">
+                    <img v-for="tile in visibleTiles" 
+                         :key="`${tile.z}-${tile.x}-${tile.y}`"
+                         :src="`/tiles/${tile.z}/${tile.x}/${tile.y}.png`"
+                         :style="tileStyle(tile)"
+                         class="tile"
+                         @load="onTileLoad"
+                         @error="onTileError" />
+                </div>
+                
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="zoom">缩放级别: {{ Math.round(zoom * 100) / 100 }}</label>
+                        <input type="range" 
+                               id="zoom" 
+                               v-model="zoom" 
+                               min="0" 
+                               max="18" 
+                               step="0.1"
+                               @input="updateMap">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="centerX">中心X: {{ Math.round(centerX) }}</label>
+                        <input type="number" 
+                               id="centerX" 
+                               v-model.number="centerX"
+                               @change="updateMap">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="centerY">中心Y: {{ Math.round(centerY) }}</label>
+                        <input type="number" 
+                               id="centerY" 
+                               v-model.number="centerY"
+                               @change="updateMap">
+                    </div>
+                    
+                    <button class="btn" @click="resetView">重置视图</button>
+                    
+                    <div class="download-section">
+                        <h3>📁 文件下载</h3>
+                        <button class="btn btn-download" @click="downloadGlbFile">
+                            📥 下载 GLB 模型文件
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="info">
+                    <div>缩放: {{ Math.round(zoom * 100) / 100 }}</div>
+                    <div>中心: ({{ Math.round(centerX) }}, {{ Math.round(centerY) }})</div>
+                    <div>瓦片数: {{ visibleTiles.length }}</div>
+                    <div>视口: {{ Math.round(mapWidth) }} × {{ Math.round(mapHeight) }}</div>
+                </div>
+                
+                <div v-if="loading" class="loading">
+                    <div class="spinner"></div>
+                    <div>加载瓦片中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+        
+        createApp({
+            setup() {
+                // 响应式数据
+                const zoom = ref(2);
+                const centerX = ref(0);
+                const centerY = ref(0);
+                const mapWidth = ref(0);
+                const mapHeight = ref(0);
+                const visibleTiles = ref([]);
+                const loading = ref(false);
+                const mapElement = ref(null);
+                
+                // 拖拽状态
+                const isDragging = ref(false);
+                const lastMouseX = ref(0);
+                const lastMouseY = ref(0);
+                
+                // 瓦片大小
+                const TILE_SIZE = 256;
+                
+                // 计算可见瓦片
+                const calculateVisibleTiles = () => {
+                    const tiles = [];
+                    const zoomLevel = Math.floor(zoom.value);
+                    const scale = Math.pow(2, zoom.value - zoomLevel);
+                    
+                    // 计算视口在瓦片坐标系中的范围
+                    const tileSize = TILE_SIZE * scale;
+                    const startX = Math.floor((centerX.value - mapWidth.value / 2) / tileSize);
+                    const endX = Math.ceil((centerX.value + mapWidth.value / 2) / tileSize);
+                    const startY = Math.floor((centerY.value - mapHeight.value / 2) / tileSize);
+                    const endY = Math.ceil((centerY.value + mapHeight.value / 2) / tileSize);
+                    
+                    // 生成瓦片
+                    for (let x = startX; x <= endX; x++) {
+                        for (let y = startY; y <= endY; y++) {
+                            if (x >= 0 && y >= 0 && x < Math.pow(2, zoomLevel) && y < Math.pow(2, zoomLevel)) {
+                                tiles.push({
+                                    x, y, z: zoomLevel,
+                                    left: x * tileSize - centerX.value + mapWidth.value / 2,
+                                    top: y * tileSize - centerY.value + mapHeight.value / 2,
+                                    width: tileSize,
+                                    height: tileSize
+                                });
+                            }
+                        }
+                    }
+                    
+                    visibleTiles.value = tiles;
+                };
+                
+                // 瓦片样式
+                const tileStyle = (tile) => ({
+                    left: `${tile.left}px`,
+                    top: `${tile.top}px`,
+                    width: `${tile.width}px`,
+                    height: `${tile.height}px`
+                });
+                
+                // 更新地图
+                const updateMap = () => {
+                    calculateVisibleTiles();
+                };
+                
+                // 重置视图
+                const resetView = () => {
+                    zoom.value = 2;
+                    centerX.value = 0;
+                    centerY.value = 0;
+                    updateMap();
+                };
+                
+                // 下载GLB文件
+                const downloadGlbFile = async () => {
+                    try {
+                        loading.value = true;
+                        const response = await fetch('/download/mld_flowers.glb');
+                        
+                        if (!response.ok) {
+                            throw new Error(`下载失败: ${response.status}`);
+                        }
+                        
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'mld_flowers.glb';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        console.log('GLB文件下载成功');
+                    } catch (error) {
+                        console.error('下载GLB文件失败:', error);
+                        alert('下载失败: ' + error.message);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+                
+                // 拖拽处理
+                const startDrag = (e) => {
+                    isDragging.value = true;
+                    lastMouseX.value = e.clientX;
+                    lastMouseY.value = e.clientY;
+                };
+                
+                const drag = (e) => {
+                    if (!isDragging.value) return;
+                    
+                    const deltaX = e.clientX - lastMouseX.value;
+                    const deltaY = e.clientY - lastMouseY.value;
+                    
+                    centerX.value -= deltaX;
+                    centerY.value -= deltaY;
+                    
+                    lastMouseX.value = e.clientX;
+                    lastMouseY.value = e.clientY;
+                    
+                    updateMap();
+                };
+                
+                const endDrag = () => {
+                    isDragging.value = false;
+                };
+                
+                // 滚轮缩放
+                const handleWheel = (e) => {
+                    e.preventDefault();
+                    
+                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                    const newZoom = Math.max(0, Math.min(18, zoom.value + delta));
+                    
+                    if (newZoom !== zoom.value) {
+                        zoom.value = newZoom;
+                        updateMap();
+                    }
+                };
+                
+                // 瓦片加载事件
+                const onTileLoad = () => {
+                    // 可以在这里添加加载完成的处理
+                };
+                
+                const onTileError = (e) => {
+                    console.error('瓦片加载失败:', e.target.src);
+                };
+                
+                // 更新地图尺寸
+                const updateMapSize = () => {
+                    if (mapElement.value) {
+                        mapWidth.value = mapElement.value.clientWidth;
+                        mapHeight.value = mapElement.value.clientHeight;
+                        updateMap();
+                    }
+                };
+                
+                // 组件挂载
+                onMounted(() => {
+                    updateMapSize();
+                    window.addEventListener('resize', updateMapSize);
+                    
+                    // 初始加载
+                    loading.value = true;
+                    setTimeout(() => {
+                        loading.value = false;
+                    }, 1000);
+                });
+                
+                return {
+                    zoom,
+                    centerX,
+                    centerY,
+                    mapWidth,
+                    mapHeight,
+                    visibleTiles,
+                    loading,
+                    mapElement,
+                    tileStyle,
+                    updateMap,
+                    resetView,
+                    downloadGlbFile,
+                    startDrag,
+                    drag,
+                    endDrag,
+                    handleWheel,
+                    onTileLoad,
+                    onTileError
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

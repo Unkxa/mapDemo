@@ -4,7 +4,12 @@ const port = Number(Deno.env.get("PORT") ?? "8000");
 
 // 处理静态文件请求
 async function handleStaticRequest(url: URL): Promise<Response> {
-  const path = url.pathname === '/' ? '/index.html' : url.pathname;
+  let path = url.pathname;
+  
+  // 处理根路径重定向到地图页面
+  if (path === '/') {
+    path = '/map.html';
+  }
   
   try {
     const filePath = `./public${path}`;
@@ -39,15 +44,15 @@ async function handleGlbDownload(url: URL): Promise<Response> {
   const path = url.pathname;
   
   // 检查是否是GLB文件下载请求
-  if (path === '/download/mld_flowers.glb' || path === '/api/download/glb') {
+  if (path.includes('/api/download/')) {
     try {
-      const filePath = './public/assect/mld_flowers.glb';
+      const filePath = `./public/assets/${path.split('/').pop()}`;
       const file = await Deno.readFile(filePath);
       
       return new Response(file, {
         headers: {
           "Content-Type": "model/gltf-binary",
-          "Content-Disposition": "attachment; filename=mld_flowers.glb",
+          "Content-Disposition": `attachment; filename=${path.split('/').pop()}`,
           "Cache-Control": "public, max-age=3600",
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET",
